@@ -1,67 +1,70 @@
 from __future__ import annotations
 
-from io import BytesIO
 from os import cpu_count
-from zipfile import ZIP_DEFLATED, ZipFile
+import time
 
 import streamlit as st
 
-from core.processing import ProcessResult, ProcessingOptions, process_files_parallel
+from core.job_manager import ConversionJob, create_job, get_job
+from core.processing import ProcessResult, ProcessingOptions
 
 SUPPORTED_FORMATS = ("png", "jpg", "webp")
+ACTIVE_STATES = {"pending", "processing"}
 
 
-def _unique_name(file_name: str, seen: dict[str, int]) -> str:
-    count = seen.get(file_name, 0)
-    seen[file_name] = count + 1
-    if count == 0:
-        return file_name
-
-    dot = file_name.rfind(".")
-    if dot == -1:
-        return f"{file_name}_{count}"
-    return f"{file_name[:dot]}_{count}{file_name[dot:]}"
+def _status_badge(status: str) -> str:
+    return {
+        "pending": "PENDING",
+        "processing": "PROCESSING",
+        "done": "DONE",
+        "failed": "FAILED",
+    }.get(status, status.upper())
 
 
-def _build_zip(results: list[ProcessResult]) -> bytes:
-    buffer = BytesIO()
-    seen_names: dict[str, int] = {}
-    with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
-        for result in results:
-            if not result.success:
-                continue
-            for output in result.outputs:
-                archive_name = _unique_name(output.filename, seen_names)
-                archive.writestr(archive_name, output.content)
-    return buffer.getvalue()
+def _render_results(results: list[ProcessResult], zip_bytes: bytes, target_format: str, job_id: str) -> None:
+    success_count = sum(1 for item in results if item.success)
+    failure_count = len(results) - success_count
 
+    st.divider()
+    st.subheader("Conversion Results")
 
-def _convert_uploaded_files(
-    files,
-    target_format: str,
-    workers: int,
-    options: ProcessingOptions,
-) -> list[ProcessResult]:
-    total = len(files)
-    progress = st.progress(0, text="Starting conversion...")
-    status_box = st.empty()
-    payloads = [(uploaded.name, uploaded.getvalue()) for uploaded in files]
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total Files", len(results))
+    m2.metric("Success", success_count)
+    m3.metric("Failed", failure_count)
 
-    def on_progress(completed: int, all_items: int, current_name: str) -> None:
-        status_box.info(f"Completed {completed}/{all_items}: `{current_name}`")
-        progress.progress(completed / all_items, text=f"Completed {completed}/{all_items}")
+    if success_count > 0 and zip_bytes:
+        st.download_button(
+            label="Download All (ZIP)",
+            data=zip_bytes,
+            file_name=f"converted_files_{target_format}_{job_id}.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
 
-    results = process_files_parallel(
-        payloads,
-        target_format=target_format,
-        options=options,
-        max_workers=workers,
-        use_processes=False,
-        progress_callback=on_progress,
-    )
+    for index, result in enumerate(results, start=1):
+        status_text = "SUCCESS" if result.success else "FAILED"
+        with st.container(border=True):
+            left, right = st.columns([3, 1], vertical_alignment="center")
+            with left:
+                st.markdown(f"**{index}. {result.source_name}**")
+                st.caption(f"Type: {result.file_type or 'unknown'}")
+            with right:
+                st.write(f"`{status_text}`")
 
-    status_box.success("Conversion completed.")
-    return results
+            if result.message:
+                st.error(result.message)
+
+            if result.success and result.outputs:
+                st.success(f"Generated {len(result.outputs)} output file(s).")
+                for output_index, output in enumerate(result.outputs, start=1):
+                    st.download_button(
+                        label=f"Download {output.filename}",
+                        data=output.content,
+                        file_name=output.filename,
+                        mime="application/octet-stream",
+                        key=f"dl-{job_id}-{index}-{output_index}",
+                    )
 
 
 def render_app() -> None:
@@ -146,10 +149,8 @@ def render_app() -> None:
 
     if "results" not in st.session_state:
         st.session_state.results = []
-    if "zip_bytes" not in st.session_state:
-        st.session_state.zip_bytes = b""
-    if "target_format" not in st.session_state:
-        st.session_state.target_format = target_format
+    if "active_job_id" not in st.session_state:
+        st.session_state.active_job_id = ""
 
     if convert_clicked:
         if not uploaded_files:
@@ -166,63 +167,51 @@ def render_app() -> None:
                 webp_lossless=webp_lossless,
                 pdf_dpi=pdf_dpi,
             )
-            results = _convert_uploaded_files(
-                uploaded_files,
-                target_format,
+            payloads = [(uploaded.name, uploaded.getvalue()) for uploaded in uploaded_files]
+            job_id = create_job(
+                payloads=payloads,
+                target_format=target_format,
                 workers=workers,
                 options=options,
             )
-            st.session_state.results = results
-            st.session_state.zip_bytes = _build_zip(results)
-            st.session_state.target_format = target_format
-
-    results: list[ProcessResult] = st.session_state.results
-    if not results:
-        return
-
-    success_count = sum(1 for item in results if item.success)
-    failure_count = len(results) - success_count
+            st.session_state.active_job_id = job_id
+            st.success(f"Job created: `{job_id}`")
 
     st.divider()
-    st.subheader("Conversion Results")
+    st.subheader("Background Job")
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Files", len(results))
-    m2.metric("Success", success_count)
-    m3.metric("Failed", failure_count)
+    active_job_id = st.text_input(
+        "Job ID",
+        value=st.session_state.active_job_id,
+        help="Paste a job ID to monitor status.",
+    ).strip()
+    st.session_state.active_job_id = active_job_id
 
-    if success_count > 0:
-        st.download_button(
-            label="Download All (ZIP)",
-            data=st.session_state.zip_bytes,
-            file_name=f"converted_files_{st.session_state.target_format}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+    if not active_job_id:
+        return
 
-    for index, result in enumerate(results, start=1):
-        status_text = "SUCCESS" if result.success else "FAILED"
-        with st.container(border=True):
-            left, right = st.columns([3, 1], vertical_alignment="center")
-            with left:
-                st.markdown(f"**{index}. {result.source_name}**")
-                st.caption(f"Type: {result.file_type or 'unknown'}")
-            with right:
-                st.write(f"`{status_text}`")
+    job: ConversionJob | None = get_job(active_job_id)
+    if job is None:
+        st.error("Job not found. Create a new conversion job first.")
+        return
 
-            if result.message:
-                st.error(result.message)
+    st.write(f"Status: `{_status_badge(job.status)}`")
+    if job.status in ACTIVE_STATES:
+        total = max(1, job.total_files)
+        progress_value = job.processed_files / total
+        progress_text = f"{job.processed_files}/{job.total_files} files processed"
+        st.progress(progress_value, text=progress_text)
+        current = job.current_file or "Waiting for worker"
+        st.info(f"Current file: `{current}`")
+        time.sleep(0.8)
+        st.rerun()
 
-            if result.success and result.outputs:
-                st.success(f"Generated {len(result.outputs)} output file(s).")
-                for output_index, output in enumerate(result.outputs, start=1):
-                    st.download_button(
-                        label=f"Download {output.filename}",
-                        data=output.content,
-                        file_name=output.filename,
-                        mime="application/octet-stream",
-                        key=f"dl-{index}-{output_index}",
-                    )
+    if job.status == "failed":
+        st.error(job.error or "Job failed.")
+        return
+
+    results = job.results or []
+    _render_results(results, job.zip_bytes, job.target_format, job.job_id)
 
 
 if __name__ == "__main__":
