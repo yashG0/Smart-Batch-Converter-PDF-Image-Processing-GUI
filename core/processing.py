@@ -27,19 +27,85 @@ class ProcessResult:
     message: str = ""
 
 
+@dataclass(slots=True)
+class ProcessingOptions:
+    resize_enabled: bool = False
+    resize_width: int | None = None
+    resize_height: int | None = None
+    keep_aspect_ratio: bool = True
+    quality: int = 85
+    png_compress_level: int = 6
+    png_optimize: bool = True
+    webp_lossless: bool = False
+    pdf_dpi: int = 200
+
+
 ProgressCallback = Callable[[int, int, str], None]
 
 
-def _save_image_to_bytes(image: Image.Image, target_format: str) -> bytes:
+def _apply_resize(image: Image.Image, options: ProcessingOptions) -> Image.Image:
+    if not options.resize_enabled:
+        return image
+
+    width = options.resize_width
+    height = options.resize_height
+    if not width and not height:
+        return image
+
+    original_width, original_height = image.size
+    if options.keep_aspect_ratio:
+        if width and height:
+            resized = image.copy()
+            resized.thumbnail((width, height), resample=Image.Resampling.LANCZOS)
+            return resized
+        if width and not height:
+            ratio = width / original_width
+            new_size = (width, max(1, int(original_height * ratio)))
+            return image.resize(new_size, resample=Image.Resampling.LANCZOS)
+        if height and not width:
+            ratio = height / original_height
+            new_size = (max(1, int(original_width * ratio)), height)
+            return image.resize(new_size, resample=Image.Resampling.LANCZOS)
+        return image
+
+    if width and height:
+        return image.resize((width, height), resample=Image.Resampling.LANCZOS)
+    return image
+
+
+def _save_image_to_bytes(
+    image: Image.Image,
+    target_format: str,
+    options: ProcessingOptions,
+) -> bytes:
     buffer = BytesIO()
     save_format = "JPEG" if target_format == "jpg" else target_format.upper()
-    to_save = image.convert("RGB") if target_format in {"jpg", "webp"} else image
-    to_save.save(buffer, format=save_format)
+    resized = _apply_resize(image, options)
+    to_save = resized.convert("RGB") if target_format in {"jpg", "webp"} else resized
+
+    save_kwargs: dict[str, int | bool] = {}
+    if target_format == "jpg":
+        save_kwargs["quality"] = max(1, min(100, options.quality))
+        save_kwargs["optimize"] = True
+    elif target_format == "webp":
+        save_kwargs["quality"] = max(1, min(100, options.quality))
+        save_kwargs["lossless"] = options.webp_lossless
+    elif target_format == "png":
+        save_kwargs["compress_level"] = max(0, min(9, options.png_compress_level))
+        save_kwargs["optimize"] = options.png_optimize
+
+    to_save.save(buffer, format=save_format, **save_kwargs)
     return buffer.getvalue()
 
 
-def process_file(name: str, content: bytes, target_format: str) -> ProcessResult:
+def process_file(
+    name: str,
+    content: bytes,
+    target_format: str,
+    options: ProcessingOptions | None = None,
+) -> ProcessResult:
     normalized_format = normalize_output_format(target_format)
+    effective_options = options or ProcessingOptions()
 
     if not content:
         return ProcessResult(
@@ -65,7 +131,7 @@ def process_file(name: str, content: bytes, target_format: str) -> ProcessResult
     if file_type == "image":
         try:
             with Image.open(BytesIO(content)) as img:
-                output_content = _save_image_to_bytes(img, normalized_format)
+                output_content = _save_image_to_bytes(img, normalized_format, effective_options)
             return ProcessResult(
                 source_name=name,
                 success=True,
@@ -90,7 +156,7 @@ def process_file(name: str, content: bytes, target_format: str) -> ProcessResult
             )
 
     try:
-        pages = convert_from_bytes(content, dpi=200)
+        pages = convert_from_bytes(content, dpi=effective_options.pdf_dpi)
         if not pages:
             return ProcessResult(
                 source_name=name,
@@ -102,7 +168,7 @@ def process_file(name: str, content: bytes, target_format: str) -> ProcessResult
 
         outputs: list[ProcessedFile] = []
         for index, page in enumerate(pages, start=1):
-            output_content = _save_image_to_bytes(page, normalized_format)
+            output_content = _save_image_to_bytes(page, normalized_format, effective_options)
             outputs.append(
                 ProcessedFile(
                     filename=f"{base}_page_{index}.{normalized_format}",
@@ -126,15 +192,23 @@ def process_file(name: str, content: bytes, target_format: str) -> ProcessResult
         )
 
 
-def _process_single_task(task: tuple[int, str, bytes, str]) -> tuple[int, ProcessResult]:
-    index, name, content, target_format = task
-    return index, process_file(name=name, content=content, target_format=target_format)
+def _process_single_task(
+    task: tuple[int, str, bytes, str, ProcessingOptions],
+) -> tuple[int, ProcessResult]:
+    index, name, content, target_format, options = task
+    return index, process_file(
+        name=name,
+        content=content,
+        target_format=target_format,
+        options=options,
+    )
 
 
 def process_files_parallel(
     files: list[tuple[str, bytes]],
     target_format: str,
     *,
+    options: ProcessingOptions | None = None,
     max_workers: int | None = None,
     use_processes: bool = False,
     progress_callback: ProgressCallback | None = None,
@@ -142,19 +216,25 @@ def process_files_parallel(
     if not files:
         return []
 
+    effective_options = options or ProcessingOptions()
     total = len(files)
     resolved_workers = max_workers if max_workers and max_workers > 0 else min(32, total)
     if resolved_workers <= 1:
         results: list[ProcessResult] = []
         for index, (name, content) in enumerate(files, start=1):
-            result = process_file(name=name, content=content, target_format=target_format)
+            result = process_file(
+                name=name,
+                content=content,
+                target_format=target_format,
+                options=effective_options,
+            )
             results.append(result)
             if progress_callback is not None:
                 progress_callback(index, total, name)
         return results
 
     tasks = [
-        (index, name, content, target_format)
+        (index, name, content, target_format, effective_options)
         for index, (name, content) in enumerate(files)
     ]
     ordered_results: list[ProcessResult | None] = [None] * total

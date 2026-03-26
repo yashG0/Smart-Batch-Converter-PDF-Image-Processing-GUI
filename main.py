@@ -6,7 +6,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
 
-from core.processing import ProcessResult, process_files_parallel
+from core.processing import ProcessResult, ProcessingOptions, process_files_parallel
 
 SUPPORTED_FORMATS = ("png", "jpg", "webp")
 
@@ -22,7 +22,12 @@ def _build_zip(results: list[ProcessResult]) -> bytes:
     return buffer.getvalue()
 
 
-def _convert_uploaded_files(files, target_format: str, workers: int) -> list[ProcessResult]:
+def _convert_uploaded_files(
+    files,
+    target_format: str,
+    workers: int,
+    options: ProcessingOptions,
+) -> list[ProcessResult]:
     total = len(files)
     progress = st.progress(0, text="Starting conversion...")
     status_box = st.empty()
@@ -35,6 +40,7 @@ def _convert_uploaded_files(files, target_format: str, workers: int) -> list[Pro
     results = process_files_parallel(
         payloads,
         target_format=target_format,
+        options=options,
         max_workers=workers,
         use_processes=False,
         progress_callback=on_progress,
@@ -78,6 +84,52 @@ def render_app() -> None:
         help="Higher values can speed up large batches.",
     )
 
+    st.subheader("Power Settings")
+    s1, s2, s3 = st.columns(3)
+    with s1:
+        resize_enabled = st.checkbox("Enable resize", value=False)
+        keep_aspect_ratio = st.checkbox("Keep aspect ratio", value=True, disabled=not resize_enabled)
+    with s2:
+        resize_width = st.number_input(
+            "Resize width",
+            min_value=1,
+            max_value=10000,
+            value=1920,
+            disabled=not resize_enabled,
+        )
+        resize_height = st.number_input(
+            "Resize height",
+            min_value=1,
+            max_value=10000,
+            value=1080,
+            disabled=not resize_enabled,
+        )
+    with s3:
+        pdf_dpi = st.slider("PDF DPI", min_value=72, max_value=400, value=200, step=8)
+
+    quality = 85
+    png_compress_level = 6
+    png_optimize = True
+    webp_lossless = False
+
+    if target_format in {"jpg", "webp"}:
+        quality = st.slider(
+            f"{target_format.upper()} quality",
+            min_value=1,
+            max_value=100,
+            value=85,
+        )
+    if target_format == "png":
+        png_compress_level = st.slider(
+            "PNG compression level",
+            min_value=0,
+            max_value=9,
+            value=6,
+        )
+        png_optimize = st.checkbox("PNG optimize", value=True)
+    if target_format == "webp":
+        webp_lossless = st.checkbox("WEBP lossless", value=False)
+
     if "results" not in st.session_state:
         st.session_state.results = []
     if "zip_bytes" not in st.session_state:
@@ -89,7 +141,23 @@ def render_app() -> None:
         if not uploaded_files:
             st.warning("Upload at least one file before converting.")
         else:
-            results = _convert_uploaded_files(uploaded_files, target_format, workers=workers)
+            options = ProcessingOptions(
+                resize_enabled=resize_enabled,
+                resize_width=int(resize_width) if resize_enabled else None,
+                resize_height=int(resize_height) if resize_enabled else None,
+                keep_aspect_ratio=keep_aspect_ratio,
+                quality=quality,
+                png_compress_level=png_compress_level,
+                png_optimize=png_optimize,
+                webp_lossless=webp_lossless,
+                pdf_dpi=pdf_dpi,
+            )
+            results = _convert_uploaded_files(
+                uploaded_files,
+                target_format,
+                workers=workers,
+                options=options,
+            )
             st.session_state.results = results
             st.session_state.zip_bytes = _build_zip(results)
             st.session_state.target_format = target_format

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import shutil
+from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from core.processing import process_file, process_files_parallel
+from core.processing import ProcessingOptions, process_file, process_files_parallel
 from core.utils import ensure_directory
 
 
@@ -59,6 +60,22 @@ def main() -> int:
     assert_true(pdf_result.file_type == "pdf", "PDF type detection failed.")
     assert_true(len(pdf_result.outputs) >= 2, "PDF should return page outputs.")
 
+    resized_result = process_file(
+        "phase2_image.png",
+        image_bytes,
+        "jpg",
+        options=ProcessingOptions(
+            resize_enabled=True,
+            resize_width=100,
+            resize_height=100,
+            keep_aspect_ratio=False,
+            quality=55,
+        ),
+    )
+    assert_true(resized_result.success, "Resized image conversion should succeed.")
+    with Image.open(BytesIO(resized_result.outputs[0].content)) as resized_image:
+        assert_true(resized_image.size == (100, 100), "Resize option did not apply correctly.")
+
     empty_result = process_file("empty.png", b"", "png")
     assert_true(not empty_result.success, "Empty file should be rejected.")
     assert_true("Empty file" in empty_result.message, "Empty-file error message is missing.")
@@ -84,6 +101,11 @@ def main() -> int:
             ("empty.png", b""),
         ],
         target_format="png",
+        options=ProcessingOptions(
+            png_compress_level=9,
+            png_optimize=True,
+            pdf_dpi=180,
+        ),
         max_workers=4,
     )
     assert_true(len(parallel_results) == 4, "Parallel processing should return all results.")
