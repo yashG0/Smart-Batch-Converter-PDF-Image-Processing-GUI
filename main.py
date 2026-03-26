@@ -11,14 +11,28 @@ from core.processing import ProcessResult, ProcessingOptions, process_files_para
 SUPPORTED_FORMATS = ("png", "jpg", "webp")
 
 
+def _unique_name(file_name: str, seen: dict[str, int]) -> str:
+    count = seen.get(file_name, 0)
+    seen[file_name] = count + 1
+    if count == 0:
+        return file_name
+
+    dot = file_name.rfind(".")
+    if dot == -1:
+        return f"{file_name}_{count}"
+    return f"{file_name[:dot]}_{count}{file_name[dot:]}"
+
+
 def _build_zip(results: list[ProcessResult]) -> bytes:
     buffer = BytesIO()
+    seen_names: dict[str, int] = {}
     with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
         for result in results:
             if not result.success:
                 continue
             for output in result.outputs:
-                archive.writestr(output.filename, output.content)
+                archive_name = _unique_name(output.filename, seen_names)
+                archive.writestr(archive_name, output.content)
     return buffer.getvalue()
 
 

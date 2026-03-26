@@ -1,196 +1,99 @@
-# 📂 Batch File Converter (PDF & Image)
+# Batch File Converter (PDF & Image)
 
-## 🚀 Overview
+A local-first Streamlit app for batch converting PDFs and images with smart validation, parallel processing, and power controls.
 
-Batch File Converter is a modern GUI-based application that enables users to convert multiple PDF and image files into desired formats efficiently.
+## Highlights
 
-Built with a clean architecture and powered by a fast Python toolchain, it eliminates the need for repetitive online conversions and ensures privacy through local processing.
+- Multiple file upload
+- PDF -> PNG/JPG/WEBP
+- Image -> PNG/JPG/WEBP
+- Smart file detection and validation
+- Per-file success/failed status
+- Parallel batch processing
+- ZIP download for all converted outputs
+- Power settings: resize, compression, format-specific controls
 
----
+## Screenshots
 
-## 🎯 Features
+### Dashboard
 
-* 📥 Upload multiple files simultaneously
-* 🔄 Convert PDFs → Images (PNG, JPG, WEBP)
-* 🖼️ Convert Images → Other formats
-* ⚡ Batch processing
-* 📦 Download converted files
-* 🌐 Modern GUI (browser-based)
-* 🔒 Fully offline processing
+![Dashboard](assets/screenshots/ui_dashboard.png)
 
----
+### Results
 
-## 🧠 Problem Statement
+![Results](assets/screenshots/ui_results.png)
 
-Most online converters:
+## Example Files
 
-* Require manual uploads
-* Are inefficient for batch operations
-* Raise privacy concerns
+Sample test files are included in `assets/examples/`:
 
-This project solves:
+- `landscape_demo.png`
+- `portrait_demo.jpg`
+- `sample_document.pdf` (2 pages)
 
-* Bulk file conversion
-* Offline processing
-* Fast, user-friendly workflow
+## Tech Stack
 
----
+- Python
+- Streamlit
+- Pillow
+- pdf2image
+- uv
 
-## 🛠️ Tech Stack
+## Project Structure
 
-### Core
-
-* Python 3.11+
-
-### GUI
-
-* `streamlit`
-
-### Processing
-
-* `Pillow (PIL)`
-* `pdf2image`
-
-### Tooling
-
-* uv
-
----
-
-## 🧩 System Design
-
-### High-Level Flow
-
-```id="sysflow01"
-User (GUI)
-    ↓
-File Upload Handler
-    ↓
-File Type Detection
-    ↓
-Conversion Engine
-   ↙           ↘
-PDF Handler   Image Handler
-   ↓               ↓
-Processed Output (Memory)
-    ↓
-Download Interface
-```
-
----
-
-## 🏗️ Architecture
-
-```id="arch01"
-Presentation Layer (Streamlit)
-        ↓
-Application Layer
-        ↓
-Processing Layer
-   ├── PDF Service
-   └── Image Service
-        ↓
-Output Layer (Download)
-```
-
----
-
-## 📁 Project Structure
-
-```id="proj02"
+```text
 .
-├── assets/                # Static files (icons, UI assets)
-├── core/                  # Core conversion logic
-│   ├── image_handler.py   # Image conversion functions
-│   ├── pdf_handler.py     # PDF conversion functions
-│   └── utils.py           # Helper utilities
-│
-├── main.py                # Streamlit entry point (GUI)
-├── output/                # Converted files output (optional use)
-│
-├── pyproject.toml         # Project configuration (uv managed)
-├── README.md              # Project documentation
+├── assets/
+│   ├── examples/
+│   └── screenshots/
+├── core/
+│   ├── image_handler.py
+│   ├── pdf_handler.py
+│   ├── processing.py
+│   └── utils.py
+├── main.py
+├── test_core.py
+├── test_processing.py
+├── pyproject.toml
+└── README.md
 ```
 
+## Installation
 
----
-
-## ⚙️ Installation (Using uv)
-
-### 1. Initialize Project
-
-```bash
-uv init batch-converter
-cd batch-converter
-```
-
----
-
-### 2. Add Dependencies
-
-```bash
-uv add streamlit pillow pdf2image
-```
-
----
-
-### 3. Install System Dependency (Linux / CachyOS)
-
-```bash
-sudo pacman -S poppler
-```
-
----
-
-### 4. Sync Environment
+1. Install dependencies:
 
 ```bash
 uv sync
 ```
 
----
-
-## ▶️ Run the Application
+2. Install Poppler (required by `pdf2image`):
 
 ```bash
-uv run streamlit run app/main.py
+sudo pacman -S poppler
 ```
 
----
+## Run App
 
-## 🔥 Future Improvements
+```bash
+uv run streamlit run main.py
+```
 
-* 📊 Per-file progress tracking
-* 📦 Bulk ZIP download
-* ⚡ Parallel processing (multiprocessing)
-* 🎨 Improved UI/UX
-* 📉 Image compression controls
-* 🧠 Smart format suggestions
+## Run Tests
 
----
+```bash
+uv run python test_core.py
+uv run python test_processing.py
+```
 
-## ⚠️ Limitations
+## Edge Cases Handled
 
-* Large PDFs may consume high memory
-* No persistent storage
-* Sequential processing (can be optimized)
+- Empty files
+- Unsupported file types
+- Corrupted images/PDFs
+- Duplicate output file names in ZIP archive
+- Parallel worker failures (returns per-file error instead of crashing whole batch)
 
----
+## Notes
 
-## 💡 Learning Outcomes
-
-* Modern Python project setup using uv
-* File and memory handling
-* Image & PDF processing
-* GUI development
-* System design fundamentals
-
----
-
-## 🏁 Conclusion
-
-This project demonstrates how a real-world problem can be solved using a modern Python stack with clean architecture and efficient tooling.
-
-It bridges the gap between scripting and product-level development.
-
----
+- For very large batches (1000+), increase workers carefully based on machine RAM/CPU.
+- Generated files from tests are written under `output/`.

@@ -247,10 +247,23 @@ def process_files_parallel(
         executor_cls = ThreadPoolExecutor
 
     with executor_cls(max_workers=resolved_workers) as executor:
-        futures = [executor.submit(_process_single_task, task) for task in tasks]
+        futures = {
+            executor.submit(_process_single_task, task): (task[0], task[1]) for task in tasks
+        }
         completed = 0
         for future in as_completed(futures):
-            index, result = future.result()
+            fallback_index, fallback_name = futures[future]
+            try:
+                index, result = future.result()
+            except Exception as exc:
+                index = fallback_index
+                result = ProcessResult(
+                    source_name=fallback_name,
+                    success=False,
+                    file_type=None,
+                    outputs=[],
+                    message=f"Unexpected processing error: {exc}",
+                )
             ordered_results[index] = result
             completed += 1
             if progress_callback is not None:
