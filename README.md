@@ -97,27 +97,21 @@ Output Layer (Download)
 
 ## 📁 Project Structure
 
-```id="proj01"
-batch-converter/
+```id="proj02"
+.
+├── assets/                # Static files (icons, UI assets)
+├── core/                  # Core conversion logic
+│   ├── image_handler.py   # Image conversion functions
+│   ├── pdf_handler.py     # PDF conversion functions
+│   └── utils.py           # Helper utilities
 │
-├── pyproject.toml        # Managed by uv
-├── uv.lock               # Dependency lock file
-├── README.md
+├── main.py                # Streamlit entry point (GUI)
+├── output/                # Converted files output (optional use)
 │
-├── app/                  # Application package
-│   ├── __init__.py
-│   ├── main.py           # Streamlit entry point
-│   │
-│   ├── core/
-│   │   ├── pdf.py        # PDF conversion logic
-│   │   ├── image.py      # Image conversion logic
-│   │   └── utils.py
-│   │
-│   └── ui/
-│       └── layout.py     # UI components (optional split)
-│
-└── assets/               # Optional UI/static assets
+├── pyproject.toml         # Project configuration (uv managed)
+├── README.md              # Project documentation
 ```
+
 
 ---
 
