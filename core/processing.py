@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from io import BytesIO
+from os import cpu_count
+from typing import Callable
 
 from PIL import Image, UnidentifiedImageError
 from pdf2image import convert_from_bytes
@@ -22,6 +25,9 @@ class ProcessResult:
     file_type: str | None
     outputs: list[ProcessedFile]
     message: str = ""
+
+
+ProgressCallback = Callable[[int, int, str], None]
 
 
 def _save_image_to_bytes(image: Image.Image, target_format: str) -> bytes:
@@ -118,3 +124,56 @@ def process_file(name: str, content: bytes, target_format: str) -> ProcessResult
             outputs=[],
             message="Corrupted or unreadable PDF file.",
         )
+
+
+def _process_single_task(task: tuple[int, str, bytes, str]) -> tuple[int, ProcessResult]:
+    index, name, content, target_format = task
+    return index, process_file(name=name, content=content, target_format=target_format)
+
+
+def process_files_parallel(
+    files: list[tuple[str, bytes]],
+    target_format: str,
+    *,
+    max_workers: int | None = None,
+    use_processes: bool = False,
+    progress_callback: ProgressCallback | None = None,
+) -> list[ProcessResult]:
+    if not files:
+        return []
+
+    total = len(files)
+    resolved_workers = max_workers if max_workers and max_workers > 0 else min(32, total)
+    if resolved_workers <= 1:
+        results: list[ProcessResult] = []
+        for index, (name, content) in enumerate(files, start=1):
+            result = process_file(name=name, content=content, target_format=target_format)
+            results.append(result)
+            if progress_callback is not None:
+                progress_callback(index, total, name)
+        return results
+
+    tasks = [
+        (index, name, content, target_format)
+        for index, (name, content) in enumerate(files)
+    ]
+    ordered_results: list[ProcessResult | None] = [None] * total
+
+    if use_processes:
+        default_workers = max(1, (cpu_count() or 2) - 1)
+        resolved_workers = min(resolved_workers, default_workers)
+        executor_cls = ProcessPoolExecutor
+    else:
+        executor_cls = ThreadPoolExecutor
+
+    with executor_cls(max_workers=resolved_workers) as executor:
+        futures = [executor.submit(_process_single_task, task) for task in tasks]
+        completed = 0
+        for future in as_completed(futures):
+            index, result = future.result()
+            ordered_results[index] = result
+            completed += 1
+            if progress_callback is not None:
+                progress_callback(completed, total, result.source_name)
+
+    return [item for item in ordered_results if item is not None]

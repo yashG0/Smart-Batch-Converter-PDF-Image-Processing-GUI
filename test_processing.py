@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from core.processing import process_file
+from core.processing import process_file, process_files_parallel
 from core.utils import ensure_directory
 
 
@@ -76,9 +76,26 @@ def main() -> int:
     corrupted_pdf_result = process_file("broken.pdf", b"%PDF-broken-content", "png")
     assert_true(not corrupted_pdf_result.success, "Corrupted PDF should fail.")
 
+    parallel_results = process_files_parallel(
+        [
+            ("phase2_image.png", image_bytes),
+            ("phase2_doc.pdf", pdf_bytes),
+            ("notes.txt", text_bytes),
+            ("empty.png", b""),
+        ],
+        target_format="png",
+        max_workers=4,
+    )
+    assert_true(len(parallel_results) == 4, "Parallel processing should return all results.")
+    assert_true(parallel_results[0].success, "Parallel image conversion should succeed.")
+    assert_true(parallel_results[1].success, "Parallel PDF conversion should succeed.")
+    assert_true(not parallel_results[2].success, "Parallel unsupported file should fail.")
+    assert_true(not parallel_results[3].success, "Parallel empty file should fail.")
+
     print("Phase 2 smart processing test passed.")
     print(f"Image outputs from one call: {len(image_result.outputs)}")
     print(f"PDF outputs from one call: {len(pdf_result.outputs)}")
+    print(f"Parallel batch results: {len(parallel_results)}")
     return 0
 
 

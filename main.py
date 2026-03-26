@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from io import BytesIO
+from os import cpu_count
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
 
-from core.processing import ProcessResult, process_file
+from core.processing import ProcessResult, process_files_parallel
 
 SUPPORTED_FORMATS = ("png", "jpg", "webp")
 
@@ -21,21 +22,23 @@ def _build_zip(results: list[ProcessResult]) -> bytes:
     return buffer.getvalue()
 
 
-def _convert_uploaded_files(files, target_format: str) -> list[ProcessResult]:
-    results: list[ProcessResult] = []
+def _convert_uploaded_files(files, target_format: str, workers: int) -> list[ProcessResult]:
     total = len(files)
     progress = st.progress(0, text="Starting conversion...")
     status_box = st.empty()
+    payloads = [(uploaded.name, uploaded.getvalue()) for uploaded in files]
 
-    for index, uploaded in enumerate(files, start=1):
-        status_box.info(f"Converting {index}/{total}: `{uploaded.name}`")
-        result = process_file(
-            name=uploaded.name,
-            content=uploaded.getvalue(),
-            target_format=target_format,
-        )
-        results.append(result)
-        progress.progress(index / total, text=f"Completed {index}/{total}")
+    def on_progress(completed: int, all_items: int, current_name: str) -> None:
+        status_box.info(f"Completed {completed}/{all_items}: `{current_name}`")
+        progress.progress(completed / all_items, text=f"Completed {completed}/{all_items}")
+
+    results = process_files_parallel(
+        payloads,
+        target_format=target_format,
+        max_workers=workers,
+        use_processes=False,
+        progress_callback=on_progress,
+    )
 
     status_box.success("Conversion completed.")
     return results
@@ -65,6 +68,16 @@ def render_app() -> None:
         else:
             st.caption("No files selected yet")
 
+    worker_limit = max(1, min(32, (cpu_count() or 4) * 2))
+    worker_default = min(8, worker_limit)
+    workers = st.slider(
+        "Parallel workers",
+        min_value=1,
+        max_value=worker_limit,
+        value=worker_default,
+        help="Higher values can speed up large batches.",
+    )
+
     if "results" not in st.session_state:
         st.session_state.results = []
     if "zip_bytes" not in st.session_state:
@@ -76,7 +89,7 @@ def render_app() -> None:
         if not uploaded_files:
             st.warning("Upload at least one file before converting.")
         else:
-            results = _convert_uploaded_files(uploaded_files, target_format)
+            results = _convert_uploaded_files(uploaded_files, target_format, workers=workers)
             st.session_state.results = results
             st.session_state.zip_bytes = _build_zip(results)
             st.session_state.target_format = target_format
