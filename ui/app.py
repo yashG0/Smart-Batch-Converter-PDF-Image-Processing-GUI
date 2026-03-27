@@ -17,30 +17,57 @@ def _inject_styles() -> None:
     st.markdown(
         """
         <style>
+            :root {
+                --bg-top: #f8fafc;
+                --bg-bottom: #eef2ff;
+                --text-strong: #0f172a;
+                --text-muted: #475569;
+                --brand: #0f766e;
+                --brand-strong: #115e59;
+                --border-soft: #dbe4f0;
+                --card-bg: rgba(255, 255, 255, 0.78);
+                --card-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
+            }
             .stApp {
-                background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+                background:
+                    radial-gradient(circle at 10% 5%, #e0f2fe 0%, transparent 30%),
+                    radial-gradient(circle at 85% 10%, #dcfce7 0%, transparent 32%),
+                    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
             }
             .block-container {
                 max-width: 960px;
-                padding-top: 2rem;
-                padding-bottom: 3rem;
+                padding-top: 2.2rem;
+                padding-bottom: 3.2rem;
             }
             .hero-title {
-                font-size: 2rem;
-                font-weight: 700;
-                margin-bottom: 0.35rem;
-                color: #0f172a;
+                font-size: 2.1rem;
+                font-weight: 750;
+                letter-spacing: -0.02em;
+                margin-bottom: 0.4rem;
+                color: var(--text-strong);
             }
             .hero-subtitle {
-                color: #334155;
-                margin-bottom: 1rem;
+                color: var(--text-muted);
+                margin-bottom: 1.15rem;
+                line-height: 1.45;
             }
             .section-label {
                 font-size: 0.85rem;
                 letter-spacing: 0.04em;
                 text-transform: uppercase;
                 color: #64748b;
-                margin-bottom: 0.25rem;
+                margin: 0.45rem 0 0.35rem;
+                font-weight: 650;
+            }
+            div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stVerticalBlockBorderWrapper"]) {
+                border-radius: 16px;
+                border: 1px solid var(--border-soft);
+                background: var(--card-bg);
+                box-shadow: var(--card-shadow);
+                backdrop-filter: blur(4px);
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                border: 0 !important;
             }
             .result-success {
                 background: rgba(22, 163, 74, 0.08);
@@ -58,15 +85,103 @@ def _inject_styles() -> None:
                 color: #991b1b;
                 font-weight: 600;
             }
-            @media (prefers-color-scheme: dark) {
-                .stApp {
-                    background: linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
+            .stButton > button {
+                border-radius: 10px;
+                font-weight: 650;
+                border: 1px solid #cbd5e1;
+                box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+                transition: all 0.18s ease;
+            }
+            .stButton > button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+            }
+            .stButton > button[kind="primary"] {
+                background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+                color: #f8fafc;
+                border: 1px solid transparent;
+            }
+            .stSelectbox [data-baseweb="select"] > div,
+            .stTextInput > div > div > input,
+            .stNumberInput input {
+                border-radius: 10px !important;
+                border-color: #cbd5e1 !important;
+            }
+            .stSlider > div[data-baseweb="slider"] {
+                padding-top: 0.35rem;
+            }
+            .stDownloadButton > button {
+                border-radius: 10px;
+            }
+            @media (max-width: 768px) {
+                .block-container {
+                    max-width: 100%;
+                    padding-top: 1.1rem;
+                    padding-left: 0.85rem;
+                    padding-right: 0.85rem;
+                    padding-bottom: 1.6rem;
                 }
                 .hero-title {
-                    color: #e2e8f0;
+                    font-size: 1.6rem;
+                    line-height: 1.2;
+                    margin-bottom: 0.3rem;
                 }
-                .hero-subtitle, .section-label {
-                    color: #94a3b8;
+                .hero-subtitle {
+                    font-size: 0.95rem;
+                    line-height: 1.45;
+                    margin-bottom: 0.8rem;
+                }
+                .section-label {
+                    font-size: 0.75rem;
+                    margin-top: 0.3rem;
+                    margin-bottom: 0.25rem;
+                }
+                div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stVerticalBlockBorderWrapper"]) {
+                    border-radius: 12px;
+                    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+                }
+                .result-success,
+                .result-failed {
+                    padding: 0.35rem 0.55rem;
+                    font-size: 0.8rem;
+                }
+                .stButton > button,
+                .stDownloadButton > button {
+                    min-height: 2.7rem;
+                    font-size: 0.95rem;
+                }
+                .stTextInput > div > div > input,
+                .stNumberInput input {
+                    font-size: 0.95rem;
+                }
+                /* Make metric blocks less cramped on small screens. */
+                div[data-testid="metric-container"] {
+                    padding: 0.5rem 0.65rem;
+                }
+                div[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+                    font-size: 0.8rem;
+                }
+                div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+                    font-size: 1.1rem;
+                }
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg-top: #0b1220;
+                    --bg-bottom: #0f172a;
+                    --text-strong: #e2e8f0;
+                    --text-muted: #94a3b8;
+                    --brand: #14b8a6;
+                    --brand-strong: #0d9488;
+                    --border-soft: #1e293b;
+                    --card-bg: rgba(15, 23, 42, 0.72);
+                    --card-shadow: 0 10px 28px rgba(2, 6, 23, 0.45);
+                }
+                .stApp {
+                    background:
+                        radial-gradient(circle at 12% 5%, rgba(15, 118, 110, 0.25) 0%, transparent 30%),
+                        radial-gradient(circle at 85% 8%, rgba(37, 99, 235, 0.2) 0%, transparent 32%),
+                        linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
                 }
             }
         </style>
