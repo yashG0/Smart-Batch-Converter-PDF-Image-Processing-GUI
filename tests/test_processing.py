@@ -4,6 +4,7 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
+import pytest
 
 from services.processing import (
     ProcessResult,
@@ -33,7 +34,57 @@ def _dummy_handler(
     )
 
 
-def test_process_file_and_parallel(sample_input_dir: Path) -> None:
+@pytest.mark.parametrize(
+    ("target_format", "expected_suffix"),
+    [
+        ("png", ".png"),
+        ("jpg", ".jpg"),
+        ("webp", ".webp"),
+        ("pdf", ".pdf"),
+    ],
+)
+def test_image_conversion_formats(
+    sample_image_bytes: bytes,
+    target_format: str,
+    expected_suffix: str,
+) -> None:
+    result = process_file("sample_image.png", sample_image_bytes, target_format)
+    assert result.success
+    assert result.file_type == "image"
+    assert len(result.outputs) == 1
+    assert result.outputs[0].filename.endswith(expected_suffix)
+
+
+def test_processing_failure_cases(
+    sample_pdf_bytes: bytes,
+    unsupported_file_bytes: bytes,
+    corrupted_image_bytes: bytes,
+    corrupted_pdf_bytes: bytes,
+) -> None:
+    empty_result = process_file("empty.png", b"", "png")
+    assert not empty_result.success
+    assert "Empty file" in empty_result.message
+
+    unsupported_result = process_file("notes.txt", unsupported_file_bytes, "png")
+    assert not unsupported_result.success
+    assert "Unsupported file type" in unsupported_result.message
+
+    corrupted_image_result = process_file("broken.jpg", corrupted_image_bytes, "png")
+    assert not corrupted_image_result.success
+
+    corrupted_pdf_result = process_file("broken.pdf", corrupted_pdf_bytes, "png")
+    assert not corrupted_pdf_result.success
+
+    pdf_to_pdf_result = process_file("phase2_doc.pdf", sample_pdf_bytes, "pdf")
+    assert not pdf_to_pdf_result.success
+
+
+def test_invalid_target_format_raises(sample_image_bytes: bytes) -> None:
+    with pytest.raises(ValueError):
+        process_file("sample_image.png", sample_image_bytes, "gif")
+
+
+def test_process_file_resize_plugin_and_parallel(sample_input_dir: Path) -> None:
     image_path = sample_input_dir / "phase2_image.png"
     pdf_path = sample_input_dir / "phase2_doc.pdf"
     text_path = sample_input_dir / "notes.txt"
@@ -56,10 +107,6 @@ def test_process_file_and_parallel(sample_input_dir: Path) -> None:
     assert pdf_result.file_type == "pdf"
     assert len(pdf_result.outputs) >= 2
 
-    image_to_pdf_result = process_file("phase2_image.png", image_bytes, "pdf")
-    assert image_to_pdf_result.success
-    assert image_to_pdf_result.outputs[0].filename.endswith(".pdf")
-
     resized_result = process_file(
         "phase2_image.png",
         image_bytes,
@@ -75,23 +122,6 @@ def test_process_file_and_parallel(sample_input_dir: Path) -> None:
     assert resized_result.success
     with Image.open(BytesIO(resized_result.outputs[0].content)) as resized_image:
         assert resized_image.size == (100, 100)
-
-    empty_result = process_file("empty.png", b"", "png")
-    assert not empty_result.success
-    assert "Empty file" in empty_result.message
-
-    unsupported_result = process_file("notes.txt", text_bytes, "png")
-    assert not unsupported_result.success
-    assert "Unsupported file type" in unsupported_result.message
-
-    corrupted_image_result = process_file("broken.jpg", b"this-is-not-an-image", "png")
-    assert not corrupted_image_result.success
-
-    corrupted_pdf_result = process_file("broken.pdf", b"%PDF-broken-content", "png")
-    assert not corrupted_pdf_result.success
-
-    pdf_to_pdf_result = process_file("phase2_doc.pdf", pdf_bytes, "pdf")
-    assert not pdf_to_pdf_result.success
 
     register_handler("dummy", _dummy_handler, extensions=(".dummy",))
     plugin_result = process_file("custom_payload.dummy", b"abc123", "png")
