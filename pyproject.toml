@@ -8,4 +8,8 @@ dependencies = [
     "pillow>=11.3.0",
     "pdf2image>=1.17.0",
     "streamlit>=1.50.0",
+    "pytest>=9.0.2",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

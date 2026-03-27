@@ -59,9 +59,11 @@ Sample test files are included in `assets/examples/`:
 ├── ui/
 │   └── app.py
 ├── main.py
-├── test_core.py
-├── test_jobs.py
-├── test_processing.py
+├── tests/
+│   ├── conftest.py
+│   ├── test_core.py
+│   ├── test_jobs.py
+│   └── test_processing.py
 ├── pyproject.toml
 └── README.md
 ```
@@ -89,9 +91,7 @@ uv run streamlit run main.py
 ## Run Tests
 
 ```bash
-uv run python test_core.py
-uv run python test_processing.py
-uv run python test_jobs.py
+uv run pytest
 ```
 
 ## Edge Cases Handled
