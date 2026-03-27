@@ -210,7 +210,7 @@ def render_app() -> None:
                     disabled=not resize_enabled,
                 )
             with s3:
-                pdf_dpi = st.slider("PDF DPI", min_value=72, max_value=400, value=200, step=8)
+                pdf_dpi = st.slider("PDF DPI", min_value=72, max_value=400, value=150, step=8)
 
             quality = 85
             png_compress_level = 6
@@ -279,7 +279,7 @@ def render_app() -> None:
             st.progress(progress_value, text=progress_text)
             current = job.current_file or "Waiting for worker"
             st.info(f"Current file: `{current}`")
-            time.sleep(0.8)
+            time.sleep(0.3)
             st.rerun()
 
         if job.status == "failed":
@@ -287,4 +287,3 @@ def render_app() -> None:
             return
 
         _render_results(job.files, job.zip_path, job.target_format, job.job_id)
-

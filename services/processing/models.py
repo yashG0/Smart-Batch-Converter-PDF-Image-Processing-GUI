@@ -29,10 +29,9 @@ class ProcessingOptions:
     png_compress_level: int = 6
     png_optimize: bool = True
     webp_lossless: bool = False
-    pdf_dpi: int = 200
+    pdf_dpi: int = 150
 
 
 ProgressCallback = Callable[[int, int, str], None]
 ConversionHandler = Callable[[str, bytes, str, ProcessingOptions], ProcessResult]
 HandlerRegistry = dict[str, ConversionHandler]
-
