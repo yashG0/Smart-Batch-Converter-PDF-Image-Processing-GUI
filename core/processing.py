@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from dataclasses import dataclass
 from io import BytesIO
 from os import cpu_count
+from pathlib import Path
 from typing import Callable
 
 from PIL import Image, UnidentifiedImageError
@@ -41,6 +42,19 @@ class ProcessingOptions:
 
 
 ProgressCallback = Callable[[int, int, str], None]
+ConversionHandler = Callable[[str, bytes, str, ProcessingOptions], ProcessResult]
+HandlerRegistry = dict[str, ConversionHandler]
+
+_HANDLERS: HandlerRegistry = {}
+_EXTENSION_FILE_TYPE_MAP: dict[str, str] = {
+    ".pdf": "pdf",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".webp": "image",
+    ".bmp": "image",
+    ".tiff": "image",
+}
 
 
 def _apply_resize(image: Image.Image, options: ProcessingOptions) -> Image.Image:
@@ -98,65 +112,39 @@ def _save_image_to_bytes(
     return buffer.getvalue()
 
 
-def process_file(
-    name: str,
-    content: bytes,
-    target_format: str,
-    options: ProcessingOptions | None = None,
-) -> ProcessResult:
-    normalized_format = normalize_output_format(target_format)
-    effective_options = options or ProcessingOptions()
-
-    if not content:
-        return ProcessResult(
-            source_name=name,
-            success=False,
-            file_type=None,
-            outputs=[],
-            message="Empty file is not allowed.",
-        )
-
-    file_type = detect_file_type(name, content)
-    if file_type is None:
-        return ProcessResult(
-            source_name=name,
-            success=False,
-            file_type=None,
-            outputs=[],
-            message="Unsupported file type. Only PDF and common image files are accepted.",
-        )
-
+def _handle_image(name: str, content: bytes, target_format: str, options: ProcessingOptions) -> ProcessResult:
     base = safe_stem(name)
-
-    if file_type == "image":
-        try:
-            with Image.open(BytesIO(content)) as img:
-                output_content = _save_image_to_bytes(img, normalized_format, effective_options)
-            return ProcessResult(
-                source_name=name,
-                success=True,
-                file_type="image",
-                outputs=[ProcessedFile(filename=f"{base}.{normalized_format}", content=output_content)],
-            )
-        except UnidentifiedImageError:
-            return ProcessResult(
-                source_name=name,
-                success=False,
-                file_type="image",
-                outputs=[],
-                message="Corrupted or unreadable image file.",
-            )
-        except Exception as exc:
-            return ProcessResult(
-                source_name=name,
-                success=False,
-                file_type="image",
-                outputs=[],
-                message=str(exc),
-            )
-
     try:
-        pages = convert_from_bytes(content, dpi=effective_options.pdf_dpi)
+        with Image.open(BytesIO(content)) as img:
+            output_content = _save_image_to_bytes(img, target_format, options)
+        return ProcessResult(
+            source_name=name,
+            success=True,
+            file_type="image",
+            outputs=[ProcessedFile(filename=f"{base}.{target_format}", content=output_content)],
+        )
+    except UnidentifiedImageError:
+        return ProcessResult(
+            source_name=name,
+            success=False,
+            file_type="image",
+            outputs=[],
+            message="Corrupted or unreadable image file.",
+        )
+    except Exception as exc:
+        return ProcessResult(
+            source_name=name,
+            success=False,
+            file_type="image",
+            outputs=[],
+            message=str(exc),
+        )
+
+
+def _handle_pdf(name: str, content: bytes, target_format: str, options: ProcessingOptions) -> ProcessResult:
+    base = safe_stem(name)
+    try:
+        pages = convert_from_bytes(content, dpi=options.pdf_dpi)
         if not pages:
             return ProcessResult(
                 source_name=name,
@@ -168,10 +156,10 @@ def process_file(
 
         outputs: list[ProcessedFile] = []
         for index, page in enumerate(pages, start=1):
-            output_content = _save_image_to_bytes(page, normalized_format, effective_options)
+            output_content = _save_image_to_bytes(page, target_format, options)
             outputs.append(
                 ProcessedFile(
-                    filename=f"{base}_page_{index}.{normalized_format}",
+                    filename=f"{base}_page_{index}.{target_format}",
                     content=output_content,
                 )
             )
@@ -190,6 +178,71 @@ def process_file(
             outputs=[],
             message="Corrupted or unreadable PDF file.",
         )
+
+
+def register_handler(file_type: str, handler: ConversionHandler, extensions: tuple[str, ...] = ()) -> None:
+    normalized_type = file_type.strip().lower()
+    if not normalized_type:
+        raise ValueError("file_type must not be empty.")
+    _HANDLERS[normalized_type] = handler
+
+    for ext in extensions:
+        normalized_ext = ext.lower()
+        if not normalized_ext.startswith("."):
+            normalized_ext = f".{normalized_ext}"
+        _EXTENSION_FILE_TYPE_MAP[normalized_ext] = normalized_type
+
+
+def get_registered_handlers() -> HandlerRegistry:
+    return dict(_HANDLERS)
+
+
+def _resolve_file_type(name: str, content: bytes) -> str | None:
+    detected = detect_file_type(name, content)
+    if detected is not None:
+        return detected
+    extension = Path(name).suffix.lower()
+    return _EXTENSION_FILE_TYPE_MAP.get(extension)
+
+
+def process_file(
+    name: str,
+    content: bytes,
+    target_format: str,
+    options: ProcessingOptions | None = None,
+) -> ProcessResult:
+    normalized_format = normalize_output_format(target_format)
+    effective_options = options or ProcessingOptions()
+
+    if not content:
+        return ProcessResult(
+            source_name=name,
+            success=False,
+            file_type=None,
+            outputs=[],
+            message="Empty file is not allowed.",
+        )
+
+    file_type = _resolve_file_type(name, content)
+    if file_type is None:
+        return ProcessResult(
+            source_name=name,
+            success=False,
+            file_type=None,
+            outputs=[],
+            message="Unsupported file type. Only PDF and common image files are accepted.",
+        )
+
+    handler = _HANDLERS.get(file_type)
+    if handler is None:
+        return ProcessResult(
+            source_name=name,
+            success=False,
+            file_type=file_type,
+            outputs=[],
+            message=f"No registered handler for file type: {file_type}",
+        )
+    return handler(name, content, normalized_format, effective_options)
 
 
 def _process_single_task(
@@ -270,3 +323,12 @@ def process_files_parallel(
                 progress_callback(completed, total, result.source_name)
 
     return [item for item in ordered_results if item is not None]
+
+
+# Built-in handlers
+register_handler("pdf", _handle_pdf, extensions=(".pdf",))
+register_handler(
+    "image",
+    _handle_image,
+    extensions=(".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"),
+)

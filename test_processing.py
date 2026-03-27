@@ -6,7 +6,14 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from core.processing import ProcessingOptions, process_file, process_files_parallel
+from core.processing import (
+    ProcessResult,
+    ProcessedFile,
+    ProcessingOptions,
+    process_file,
+    process_files_parallel,
+    register_handler,
+)
 from core.utils import ensure_directory
 
 
@@ -28,6 +35,17 @@ def create_sample_pdf(path: Path, label: str) -> None:
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def dummy_handler(name: str, content: bytes, target_format: str, options: ProcessingOptions) -> ProcessResult:
+    del options
+    payload = f"dummy:{name}:{target_format}:{len(content)}".encode("utf-8")
+    return ProcessResult(
+        source_name=name,
+        success=True,
+        file_type="dummy",
+        outputs=[ProcessedFile(filename="dummy.txt", content=payload)],
+    )
 
 
 def main() -> int:
@@ -92,6 +110,12 @@ def main() -> int:
 
     corrupted_pdf_result = process_file("broken.pdf", b"%PDF-broken-content", "png")
     assert_true(not corrupted_pdf_result.success, "Corrupted PDF should fail.")
+
+    register_handler("dummy", dummy_handler, extensions=(".dummy",))
+    plugin_result = process_file("custom_payload.dummy", b"abc123", "png")
+    assert_true(plugin_result.success, "Plugin handler should process custom type.")
+    assert_true(plugin_result.file_type == "dummy", "Plugin file type should be preserved.")
+    assert_true(len(plugin_result.outputs) == 1, "Plugin handler should return output.")
 
     parallel_results = process_files_parallel(
         [

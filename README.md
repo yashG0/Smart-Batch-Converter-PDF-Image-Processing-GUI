@@ -14,6 +14,7 @@ A local-first Streamlit app for batch converting PDFs and images with smart vali
 - Power settings: resize, compression, format-specific controls
 - Background job queue with job IDs
 - SQLite-backed job metadata persistence across refresh
+- Plugin-based conversion handler registry
 
 ## Screenshots
 
@@ -98,6 +99,21 @@ uv run python test_jobs.py
 - Duplicate output file names in ZIP archive
 - Parallel worker failures (returns per-file error instead of crashing whole batch)
 - Job metadata persists in SQLite (`output/jobs.db`)
+
+## Extending With Plugins
+
+You can register new handlers without editing `process_file` branching logic:
+
+```python
+from core.processing import register_handler
+
+def docx_handler(name, content, target_format, options):
+    ...
+
+register_handler("docx", docx_handler, extensions=(".docx",))
+```
+
+Built-in handlers are registered for `pdf` and `image`.
 
 ## Notes
 
