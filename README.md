@@ -55,6 +55,11 @@ Sample test files are included in `assets/examples/`:
 │   ├── pdf_handler.py
 │   ├── processing.py
 │   └── utils.py
+├── services/
+│   ├── jobs/
+│   └── processing/
+├── ui/
+│   └── app.py
 ├── main.py
 ├── test_core.py
 ├── test_jobs.py
@@ -99,6 +104,13 @@ uv run python test_jobs.py
 - Duplicate output file names in ZIP archive
 - Parallel worker failures (returns per-file error instead of crashing whole batch)
 - Job metadata persists in SQLite (`output/jobs.db`)
+
+## Architecture Overview
+
+- `core/`: compatibility facades + foundational utilities
+- `services/processing/`: conversion engine, handlers, registry, parallel executor
+- `services/jobs/`: queue worker, SQLite storage, job service API
+- `ui/`: Streamlit interface layer
 
 ## Extending With Plugins
 
