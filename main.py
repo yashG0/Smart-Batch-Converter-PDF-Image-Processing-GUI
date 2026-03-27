@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from os import cpu_count
 import time
+from os import cpu_count
+from pathlib import Path
 
 import streamlit as st
 
-from core.job_manager import ConversionJob, create_job, get_job
-from core.processing import ProcessResult, ProcessingOptions
+from core.job_manager import ConversionJob, JobFileRecord, create_job, get_job
+from core.processing import ProcessingOptions
 
 SUPPORTED_FORMATS = ("png", "jpg", "webp")
 ACTIVE_STATES = {"pending", "processing"}
@@ -21,47 +22,50 @@ def _status_badge(status: str) -> str:
     }.get(status, status.upper())
 
 
-def _render_results(results: list[ProcessResult], zip_bytes: bytes, target_format: str, job_id: str) -> None:
-    success_count = sum(1 for item in results if item.success)
-    failure_count = len(results) - success_count
+def _render_results(files: list[JobFileRecord], zip_path: str, target_format: str, job_id: str) -> None:
+    success_count = sum(1 for item in files if item.status == "done")
+    failure_count = len(files) - success_count
 
     st.divider()
     st.subheader("Conversion Results")
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Total Files", len(results))
+    m1.metric("Total Files", len(files))
     m2.metric("Success", success_count)
     m3.metric("Failed", failure_count)
 
-    if success_count > 0 and zip_bytes:
+    if success_count > 0 and zip_path and Path(zip_path).exists():
         st.download_button(
             label="Download All (ZIP)",
-            data=zip_bytes,
+            data=Path(zip_path).read_bytes(),
             file_name=f"converted_files_{target_format}_{job_id}.zip",
             mime="application/zip",
             use_container_width=True,
         )
 
-    for index, result in enumerate(results, start=1):
-        status_text = "SUCCESS" if result.success else "FAILED"
+    for index, record in enumerate(files, start=1):
+        status_text = "SUCCESS" if record.status == "done" else "FAILED"
         with st.container(border=True):
             left, right = st.columns([3, 1], vertical_alignment="center")
             with left:
-                st.markdown(f"**{index}. {result.source_name}**")
-                st.caption(f"Type: {result.file_type or 'unknown'}")
+                st.markdown(f"**{index}. {record.source_name}**")
+                st.caption(f"Type: {record.file_type or 'unknown'}")
             with right:
                 st.write(f"`{status_text}`")
 
-            if result.message:
-                st.error(result.message)
+            if record.message:
+                st.error(record.message)
 
-            if result.success and result.outputs:
-                st.success(f"Generated {len(result.outputs)} output file(s).")
-                for output_index, output in enumerate(result.outputs, start=1):
+            if record.status == "done" and record.output_paths:
+                st.success(f"Generated {len(record.output_paths)} output file(s).")
+                for output_index, path_str in enumerate(record.output_paths, start=1):
+                    output_path = Path(path_str)
+                    if not output_path.exists():
+                        continue
                     st.download_button(
-                        label=f"Download {output.filename}",
-                        data=output.content,
-                        file_name=output.filename,
+                        label=f"Download {output_path.name}",
+                        data=output_path.read_bytes(),
+                        file_name=output_path.name,
                         mime="application/octet-stream",
                         key=f"dl-{job_id}-{index}-{output_index}",
                     )
@@ -70,7 +74,7 @@ def _render_results(results: list[ProcessResult], zip_bytes: bytes, target_forma
 def render_app() -> None:
     st.set_page_config(page_title="Batch File Converter", page_icon="📂", layout="wide")
     st.title("Batch File Converter")
-    st.caption("Upload files, convert in one click, and download output files instantly.")
+    st.caption("Upload files, convert in background, and monitor job status by ID.")
 
     top_left, top_right = st.columns([2, 1], vertical_alignment="bottom")
     with top_left:
@@ -84,7 +88,7 @@ def render_app() -> None:
 
     controls_col, helper_col = st.columns([1, 1], vertical_alignment="center")
     with controls_col:
-        convert_clicked = st.button("Convert Files", type="primary", use_container_width=True)
+        convert_clicked = st.button("Create Conversion Job", type="primary", use_container_width=True)
     with helper_col:
         if uploaded_files:
             st.caption(f"Ready: {len(uploaded_files)} file(s) selected")
@@ -130,31 +134,19 @@ def render_app() -> None:
     webp_lossless = False
 
     if target_format in {"jpg", "webp"}:
-        quality = st.slider(
-            f"{target_format.upper()} quality",
-            min_value=1,
-            max_value=100,
-            value=85,
-        )
+        quality = st.slider(f"{target_format.upper()} quality", min_value=1, max_value=100, value=85)
     if target_format == "png":
-        png_compress_level = st.slider(
-            "PNG compression level",
-            min_value=0,
-            max_value=9,
-            value=6,
-        )
+        png_compress_level = st.slider("PNG compression level", min_value=0, max_value=9, value=6)
         png_optimize = st.checkbox("PNG optimize", value=True)
     if target_format == "webp":
         webp_lossless = st.checkbox("WEBP lossless", value=False)
 
-    if "results" not in st.session_state:
-        st.session_state.results = []
     if "active_job_id" not in st.session_state:
         st.session_state.active_job_id = ""
 
     if convert_clicked:
         if not uploaded_files:
-            st.warning("Upload at least one file before converting.")
+            st.warning("Upload at least one file before creating a job.")
         else:
             options = ProcessingOptions(
                 resize_enabled=resize_enabled,
@@ -183,7 +175,7 @@ def render_app() -> None:
     active_job_id = st.text_input(
         "Job ID",
         value=st.session_state.active_job_id,
-        help="Paste a job ID to monitor status.",
+        help="Paste a job ID to monitor status after refresh.",
     ).strip()
     st.session_state.active_job_id = active_job_id
 
@@ -210,8 +202,7 @@ def render_app() -> None:
         st.error(job.error or "Job failed.")
         return
 
-    results = job.results or []
-    _render_results(results, job.zip_bytes, job.target_format, job.job_id)
+    _render_results(job.files, job.zip_path, job.target_format, job.job_id)
 
 
 if __name__ == "__main__":

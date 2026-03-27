@@ -12,6 +12,8 @@ A local-first Streamlit app for batch converting PDFs and images with smart vali
 - Parallel batch processing
 - ZIP download for all converted outputs
 - Power settings: resize, compression, format-specific controls
+- Background job queue with job IDs
+- SQLite-backed job metadata persistence across refresh
 
 ## Screenshots
 
@@ -48,11 +50,13 @@ Sample test files are included in `assets/examples/`:
 │   └── screenshots/
 ├── core/
 │   ├── image_handler.py
+│   ├── job_manager.py
 │   ├── pdf_handler.py
 │   ├── processing.py
 │   └── utils.py
 ├── main.py
 ├── test_core.py
+├── test_jobs.py
 ├── test_processing.py
 ├── pyproject.toml
 └── README.md
@@ -83,6 +87,7 @@ uv run streamlit run main.py
 ```bash
 uv run python test_core.py
 uv run python test_processing.py
+uv run python test_jobs.py
 ```
 
 ## Edge Cases Handled
@@ -92,6 +97,7 @@ uv run python test_processing.py
 - Corrupted images/PDFs
 - Duplicate output file names in ZIP archive
 - Parallel worker failures (returns per-file error instead of crashing whole batch)
+- Job metadata persists in SQLite (`output/jobs.db`)
 
 ## Notes
 

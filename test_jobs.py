@@ -44,8 +44,14 @@ def main() -> int:
 
     assert_true(seen_pending_or_processing, "Job should pass through pending/processing state.")
     assert_true(job.status == "done", f"Expected job to finish as done, got: {job.status}")
-    assert_true(job.results is not None and len(job.results) == 2, "Expected 2 result entries.")
-    assert_true(bool(job.zip_bytes), "ZIP bytes should be available after completion.")
+    assert_true(len(job.files) == 2, "Expected 2 file records.")
+    for record in job.files:
+        assert_true(bool(record.source_name), "Source filename should be persisted.")
+        assert_true(record.status in {"done", "failed"}, "File status should be persisted.")
+        for path in record.output_paths:
+            assert_true(Path(path).exists(), "Output path should exist on disk.")
+    assert_true(bool(job.zip_path), "ZIP path should be persisted.")
+    assert_true(Path(job.zip_path).exists(), "ZIP file should exist on disk.")
 
     print(f"Background job test passed. job_id={job_id}, status={job.status}")
     return 0
