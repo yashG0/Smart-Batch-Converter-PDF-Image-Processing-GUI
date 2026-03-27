@@ -51,9 +51,7 @@ Sample test files are included in `assets/examples/`:
 │   └── screenshots/
 ├── core/
 │   ├── image_handler.py
-│   ├── job_manager.py
 │   ├── pdf_handler.py
-│   ├── processing.py
 │   └── utils.py
 ├── services/
 │   ├── jobs/
@@ -107,7 +105,7 @@ uv run python test_jobs.py
 
 ## Architecture Overview
 
-- `core/`: compatibility facades + foundational utilities
+- `core/`: foundational utilities + legacy conversion handlers
 - `services/processing/`: conversion engine, handlers, registry, parallel executor
 - `services/jobs/`: queue worker, SQLite storage, job service API
 - `ui/`: Streamlit interface layer
@@ -117,7 +115,7 @@ uv run python test_jobs.py
 You can register new handlers without editing `process_file` branching logic:
 
 ```python
-from core.processing import register_handler
+from services.processing import register_handler
 
 def docx_handler(name, content, target_format, options):
     ...

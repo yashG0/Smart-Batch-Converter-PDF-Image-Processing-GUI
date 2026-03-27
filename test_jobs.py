@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from core.job_manager import create_job, get_job
-from core.processing import ProcessingOptions
+from services.jobs import create_job, get_job
+from services.processing import ProcessingOptions
 
 
 def assert_true(condition: bool, message: str) -> None:

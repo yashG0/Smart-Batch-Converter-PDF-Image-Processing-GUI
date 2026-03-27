@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from core.processing import (
+from services.processing import (
     ProcessResult,
     ProcessedFile,
     ProcessingOptions,
