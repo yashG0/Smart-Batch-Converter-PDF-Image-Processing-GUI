@@ -71,6 +71,8 @@ def insert_pending_job(
     workers: int,
     options: ProcessingOptions,
 ) -> None:
+    # Ensure schema exists in fresh environments (e.g. first Streamlit Cloud boot).
+    init_db()
     now = now_iso()
     options_json = json.dumps(asdict(options))
     with db_connection() as conn:
@@ -240,4 +242,3 @@ def fetch_job(job_id: str) -> ConversionJob | None:
         zip_path=job_row["zip_path"],
         files=files,
     )
-
