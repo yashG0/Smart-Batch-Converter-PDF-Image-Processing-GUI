@@ -2,11 +2,27 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from services.processing import ProcessingOptions
+from services.processing import ProcessingOptions, process_files_parallel
 
 from .models import ConversionJob, QueuedJob
-from .storage import fetch_job, insert_pending_job
+from .storage import (
+    fetch_job,
+    insert_pending_job,
+    mark_job_done,
+    mark_job_failed,
+    update_job_progress,
+)
 from .worker import enqueue_job
+
+FAST_PATH_MAX_FILES = 3
+FAST_PATH_MAX_TOTAL_BYTES = 24 * 1024 * 1024
+
+
+def _should_use_fast_path(payloads: list[tuple[str, bytes]]) -> bool:
+    if len(payloads) > FAST_PATH_MAX_FILES:
+        return False
+    total_bytes = sum(len(content) for _, content in payloads)
+    return total_bytes <= FAST_PATH_MAX_TOTAL_BYTES
 
 
 def create_job(
@@ -24,18 +40,43 @@ def create_job(
         workers=normalized_workers,
         options=options,
     )
-    enqueue_job(
-        QueuedJob(
-            job_id=job_id,
-            payloads=payloads,
-            target_format=target_format,
-            workers=normalized_workers,
-            options=options,
+
+    if _should_use_fast_path(payloads):
+        try:
+            update_job_progress(job_id, processed=0, total=len(payloads), current_file="")
+
+            def on_progress(completed: int, total: int, current_name: str) -> None:
+                update_job_progress(
+                    job_id,
+                    processed=completed,
+                    total=total,
+                    current_file=current_name,
+                )
+
+            results = process_files_parallel(
+                payloads,
+                target_format=target_format,
+                options=options,
+                max_workers=min(2, normalized_workers),
+                use_processes=False,
+                progress_callback=on_progress,
+            )
+            mark_job_done(job_id, results=results, target_format=target_format)
+        except Exception as exc:
+            mark_job_failed(job_id, str(exc))
+    else:
+        enqueue_job(
+            QueuedJob(
+                job_id=job_id,
+                payloads=payloads,
+                target_format=target_format,
+                workers=normalized_workers,
+                options=options,
+            )
         )
-    )
+
     return job_id
 
 
 def get_job(job_id: str) -> ConversionJob | None:
     return fetch_job(job_id)
-
