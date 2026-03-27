@@ -3,15 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from pdf2image import convert_from_path
+from core.utils import ConversionResult, ensure_directory, validate_existing_files
+from services.processing import ProcessingOptions, process_file
 
-from core.utils import (
-    ConversionResult,
-    build_output_path,
-    is_pdf_file,
-    normalize_output_format,
-    validate_existing_files,
-)
+
+def _write_outputs(output_dir: Path, outputs) -> list[Path]:
+    written_paths: list[Path] = []
+    for item in outputs:
+        target = output_dir / item.filename
+        base = target.stem
+        ext = target.suffix
+        suffix = 1
+        while target.exists():
+            target = output_dir / f"{base}_{suffix}{ext}"
+            suffix += 1
+        target.write_bytes(item.content)
+        written_paths.append(target)
+    return written_paths
 
 
 def convert_pdf_file(
@@ -21,48 +29,22 @@ def convert_pdf_file(
     dpi: int = 200,
 ) -> ConversionResult:
     source = Path(pdf_path)
-    normalized_format = normalize_output_format(target_format)
-    if normalized_format == "pdf":
+    destination = ensure_directory(output_dir)
+    result = process_file(
+        name=source.name,
+        content=source.read_bytes(),
+        target_format=target_format,
+        options=ProcessingOptions(pdf_dpi=dpi),
+    )
+    if not result.success:
         return ConversionResult(
             source=source,
             outputs=[],
             success=False,
-            message="PDF to PDF conversion is not supported.",
+            message=result.message,
         )
 
-    if not is_pdf_file(source):
-        return ConversionResult(
-            source=source,
-            outputs=[],
-            success=False,
-            message=f"Unsupported PDF file type: {source.suffix}",
-        )
-
-    try:
-        pages = convert_from_path(str(source), dpi=dpi)
-    except Exception as exc:
-        return ConversionResult(source=source, outputs=[], success=False, message=str(exc))
-
-    outputs: list[Path] = []
-    try:
-        for page_index, page_image in enumerate(pages, start=1):
-            output_path = build_output_path(
-                source_file=source,
-                output_dir=output_dir,
-                target_format=normalized_format,
-                suffix=f"page_{page_index}",
-            )
-            save_format = "JPEG" if normalized_format == "jpg" else normalized_format.upper()
-            image_to_save = (
-                page_image.convert("RGB")
-                if normalized_format in {"jpg", "webp"}
-                else page_image
-            )
-            image_to_save.save(output_path, format=save_format)
-            outputs.append(output_path)
-    except Exception as exc:
-        return ConversionResult(source=source, outputs=outputs, success=False, message=str(exc))
-
+    outputs = _write_outputs(destination, result.outputs)
     return ConversionResult(source=source, outputs=outputs, success=True)
 
 
@@ -74,3 +56,4 @@ def batch_convert_pdfs(
 ) -> list[ConversionResult]:
     paths = validate_existing_files(pdf_paths)
     return [convert_pdf_file(path, target_format, output_dir, dpi=dpi) for path in paths]
+

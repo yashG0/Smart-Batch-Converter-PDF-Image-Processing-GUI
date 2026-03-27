@@ -3,15 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
-from PIL import Image
+from core.utils import ConversionResult, ensure_directory, validate_existing_files
+from services.processing import ProcessingOptions, process_file
 
-from core.utils import (
-    ConversionResult,
-    build_output_path,
-    is_image_file,
-    normalize_output_format,
-    validate_existing_files,
-)
+
+def _write_outputs(output_dir: Path, outputs) -> list[Path]:
+    written_paths: list[Path] = []
+    for item in outputs:
+        target = output_dir / item.filename
+        base = target.stem
+        ext = target.suffix
+        suffix = 1
+        while target.exists():
+            target = output_dir / f"{base}_{suffix}{ext}"
+            suffix += 1
+        target.write_bytes(item.content)
+        written_paths.append(target)
+    return written_paths
 
 
 def convert_image_file(
@@ -20,35 +28,23 @@ def convert_image_file(
     output_dir: Path | str,
 ) -> ConversionResult:
     source = Path(image_path)
-    normalized_format = normalize_output_format(target_format)
-
-    if not is_image_file(source):
-        return ConversionResult(
-            source=source,
-            outputs=[],
-            success=False,
-            message=f"Unsupported image file type: {source.suffix}",
-        )
-
-    output_path = build_output_path(
-        source_file=source,
-        output_dir=output_dir,
-        target_format=normalized_format,
+    destination = ensure_directory(output_dir)
+    result = process_file(
+        name=source.name,
+        content=source.read_bytes(),
+        target_format=target_format,
+        options=ProcessingOptions(),
     )
-
-    try:
-        with Image.open(source) as img:
-            converted = img.convert("RGB") if normalized_format in {"jpg", "webp", "pdf"} else img
-            save_format = "JPEG" if normalized_format == "jpg" else normalized_format.upper()
-            converted.save(output_path, format=save_format)
-        return ConversionResult(source=source, outputs=[output_path], success=True)
-    except Exception as exc:
+    if not result.success:
         return ConversionResult(
             source=source,
             outputs=[],
             success=False,
-            message=str(exc),
+            message=result.message,
         )
+
+    outputs = _write_outputs(destination, result.outputs)
+    return ConversionResult(source=source, outputs=outputs, success=True)
 
 
 def batch_convert_images(
@@ -58,3 +54,4 @@ def batch_convert_images(
 ) -> list[ConversionResult]:
     paths = validate_existing_files(image_paths)
     return [convert_image_file(path, target_format, output_dir) for path in paths]
+
