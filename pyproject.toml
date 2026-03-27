@@ -9,7 +9,14 @@ dependencies = [
     "pdf2image>=1.17.0",
     "streamlit>=1.50.0",
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "--cov=services",
+    "--cov=core",
+    "--cov-report=term-missing",
+    "--cov-fail-under=80",
+]

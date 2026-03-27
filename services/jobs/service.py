@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from services.common.logging import get_logger
 from services.processing import ProcessingOptions, process_files_parallel
 
 from .models import ConversionJob, QueuedJob
@@ -32,7 +33,12 @@ def create_job(
     options: ProcessingOptions,
 ) -> str:
     job_id = uuid4().hex[:12]
+    correlation_id = uuid4().hex[:8]
+    logger = get_logger("jobs.service", job_id=job_id, correlation_id=correlation_id)
     normalized_workers = max(1, workers)
+    logger.info(
+        "create_job requested",
+    )
     insert_pending_job(
         job_id=job_id,
         payloads=payloads,
@@ -42,6 +48,7 @@ def create_job(
     )
 
     if _should_use_fast_path(payloads):
+        logger.info("using fast-path execution")
         try:
             update_job_progress(job_id, processed=0, total=len(payloads), current_file="")
 
@@ -62,9 +69,12 @@ def create_job(
                 progress_callback=on_progress,
             )
             mark_job_done(job_id, results=results, target_format=target_format)
+            logger.info("fast-path execution completed")
         except Exception as exc:
             mark_job_failed(job_id, str(exc))
+            logger.exception("fast-path execution failed: %s", exc)
     else:
+        logger.info("enqueuing background job")
         enqueue_job(
             QueuedJob(
                 job_id=job_id,

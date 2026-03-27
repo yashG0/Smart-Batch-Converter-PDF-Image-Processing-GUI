@@ -94,6 +94,12 @@ uv run streamlit run main.py
 uv run pytest
 ```
 
+To see coverage report:
+
+```bash
+uv run pytest --cov=services --cov=core --cov=ui --cov-report=term-missing
+```
+
 ## Edge Cases Handled
 
 - Empty files

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from services.common.logging import get_logger
 from services.processing import ProcessResult, ProcessingOptions
 
 from .models import ConversionJob, JobFileRecord
@@ -19,14 +21,23 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def db_connection() -> sqlite3.Connection:
+@contextmanager
+def db_connection():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def init_db() -> None:
+    logger = get_logger("jobs.storage")
     with db_connection() as conn:
         conn.execute(
             """
@@ -61,6 +72,7 @@ def init_db() -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_job_files_job_id ON job_files(job_id)")
+    logger.info("database schema ensured")
 
 
 def insert_pending_job(
@@ -73,6 +85,7 @@ def insert_pending_job(
 ) -> None:
     # Ensure schema exists in fresh environments (e.g. first Streamlit Cloud boot).
     init_db()
+    logger = get_logger("jobs.storage", job_id=job_id)
     now = now_iso()
     options_json = json.dumps(asdict(options))
     with db_connection() as conn:
@@ -107,6 +120,7 @@ def insert_pending_job(
                 """,
                 (job_id, source_name, "pending", "", None, "[]"),
             )
+    logger.info("pending job inserted with %d file(s)", len(payloads))
 
 
 def update_job_progress(job_id: str, *, processed: int, total: int, current_file: str) -> None:
@@ -119,6 +133,12 @@ def update_job_progress(job_id: str, *, processed: int, total: int, current_file
             """,
             ("processing", now_iso(), processed, total, current_file, job_id),
         )
+    get_logger("jobs.storage", job_id=job_id).debug(
+        "job progress updated processed=%d total=%d current_file=%s",
+        processed,
+        total,
+        current_file,
+    )
 
 
 def _persist_outputs(job_id: str, results: list[ProcessResult], target_format: str) -> tuple[list[JobFileRecord], Path]:
@@ -190,6 +210,7 @@ def mark_job_done(job_id: str, *, results: list[ProcessResult], target_format: s
             """,
             ("done", now_iso(), len(results), "", "", str(zip_path), job_id),
         )
+    get_logger("jobs.storage", job_id=job_id).info("job marked done")
 
 
 def mark_job_failed(job_id: str, error: str) -> None:
@@ -202,6 +223,7 @@ def mark_job_failed(job_id: str, error: str) -> None:
             """,
             ("failed", now_iso(), "", error, job_id),
         )
+    get_logger("jobs.storage", job_id=job_id).error("job marked failed: %s", error)
 
 
 def fetch_job(job_id: str) -> ConversionJob | None:
