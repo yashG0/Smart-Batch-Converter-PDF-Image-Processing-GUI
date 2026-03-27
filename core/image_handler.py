@@ -38,7 +38,7 @@ def convert_image_file(
 
     try:
         with Image.open(source) as img:
-            converted = img.convert("RGB") if normalized_format in {"jpg", "webp"} else img
+            converted = img.convert("RGB") if normalized_format in {"jpg", "webp", "pdf"} else img
             save_format = "JPEG" if normalized_format == "jpg" else normalized_format.upper()
             converted.save(output_path, format=save_format)
         return ConversionResult(source=source, outputs=[output_path], success=True)

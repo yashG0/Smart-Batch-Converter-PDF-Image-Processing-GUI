@@ -44,7 +44,7 @@ def save_image_to_bytes(image: Image.Image, target_format: str, options: Process
     buffer = BytesIO()
     save_format = "JPEG" if target_format == "jpg" else target_format.upper()
     resized = _apply_resize(image, options)
-    to_save = resized.convert("RGB") if target_format in {"jpg", "webp"} else resized
+    to_save = resized.convert("RGB") if target_format in {"jpg", "webp", "pdf"} else resized
 
     save_kwargs: dict[str, int | bool] = {}
     if target_format == "jpg":
@@ -92,6 +92,14 @@ def handle_image(name: str, content: bytes, target_format: str, options: Process
 
 def handle_pdf(name: str, content: bytes, target_format: str, options: ProcessingOptions) -> ProcessResult:
     base = safe_stem(name)
+    if target_format == "pdf":
+        return ProcessResult(
+            source_name=name,
+            success=False,
+            file_type="pdf",
+            outputs=[],
+            message="PDF to PDF conversion is not supported.",
+        )
     try:
         pages = convert_from_bytes(content, dpi=options.pdf_dpi)
         if not pages:
@@ -127,4 +135,3 @@ def handle_pdf(name: str, content: bytes, target_format: str, options: Processin
             outputs=[],
             message="Corrupted or unreadable PDF file.",
         )
-

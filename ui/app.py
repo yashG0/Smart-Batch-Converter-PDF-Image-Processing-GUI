@@ -9,7 +9,7 @@ import streamlit as st
 from services.jobs import ConversionJob, JobFileRecord, create_job, get_job
 from services.processing import ProcessingOptions
 
-SUPPORTED_FORMATS = ("png", "jpg", "webp")
+SUPPORTED_FORMATS = ("png", "jpg", "webp", "pdf")
 ACTIVE_STATES = {"pending", "processing"}
 
 

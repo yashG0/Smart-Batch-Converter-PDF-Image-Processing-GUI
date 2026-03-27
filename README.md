@@ -6,7 +6,7 @@ A local-first Streamlit app for batch converting PDFs and images with smart vali
 
 - Multiple file upload
 - PDF -> PNG/JPG/WEBP
-- Image -> PNG/JPG/WEBP
+- Image -> PNG/JPG/WEBP/PDF
 - Smart file detection and validation
 - Per-file success/failed status
 - Parallel batch processing

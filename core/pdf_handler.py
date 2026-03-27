@@ -22,6 +22,13 @@ def convert_pdf_file(
 ) -> ConversionResult:
     source = Path(pdf_path)
     normalized_format = normalize_output_format(target_format)
+    if normalized_format == "pdf":
+        return ConversionResult(
+            source=source,
+            outputs=[],
+            success=False,
+            message="PDF to PDF conversion is not supported.",
+        )
 
     if not is_pdf_file(source):
         return ConversionResult(

@@ -78,6 +78,10 @@ def main() -> int:
     assert_true(pdf_result.file_type == "pdf", "PDF type detection failed.")
     assert_true(len(pdf_result.outputs) >= 2, "PDF should return page outputs.")
 
+    image_to_pdf_result = process_file("phase2_image.png", image_bytes, "pdf")
+    assert_true(image_to_pdf_result.success, "Image to PDF conversion should succeed.")
+    assert_true(image_to_pdf_result.outputs[0].filename.endswith(".pdf"), "Output should be PDF.")
+
     resized_result = process_file(
         "phase2_image.png",
         image_bytes,
@@ -110,6 +114,9 @@ def main() -> int:
 
     corrupted_pdf_result = process_file("broken.pdf", b"%PDF-broken-content", "png")
     assert_true(not corrupted_pdf_result.success, "Corrupted PDF should fail.")
+
+    pdf_to_pdf_result = process_file("phase2_doc.pdf", pdf_bytes, "pdf")
+    assert_true(not pdf_to_pdf_result.success, "PDF to PDF should be rejected.")
 
     register_handler("dummy", dummy_handler, extensions=(".dummy",))
     plugin_result = process_file("custom_payload.dummy", b"abc123", "png")

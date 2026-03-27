@@ -6,7 +6,7 @@ from typing import Iterable, Literal
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"}
 PDF_EXTENSIONS = {".pdf"}
-SUPPORTED_OUTPUT_FORMATS = {"png", "jpg", "jpeg", "webp"}
+SUPPORTED_OUTPUT_FORMATS = {"png", "jpg", "jpeg", "webp", "pdf"}
 FileKind = Literal["pdf", "image"]
 
 
