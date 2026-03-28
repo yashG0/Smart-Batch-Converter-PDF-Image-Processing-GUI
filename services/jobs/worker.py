@@ -33,7 +33,7 @@ def _process_job(job: QueuedJob) -> None:
             target_format=job.target_format,
             options=job.options,
             max_workers=job.workers,
-            use_processes=False,
+            use_processes=True,
             progress_callback=on_progress,
         )
         mark_job_done(job.job_id, results=results, target_format=job.target_format)

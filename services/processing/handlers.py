@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import fitz
+import img2pdf
 from PIL import Image, UnidentifiedImageError
-from pdf2image import convert_from_bytes
 
 from core.utils import safe_stem
 
@@ -44,7 +45,7 @@ def save_image_to_bytes(image: Image.Image, target_format: str, options: Process
     buffer = BytesIO()
     save_format = "JPEG" if target_format == "jpg" else target_format.upper()
     resized = _apply_resize(image, options)
-    to_save = resized.convert("RGB") if target_format in {"jpg", "webp", "pdf"} else resized
+    to_save = resized.convert("RGB") if target_format in {"jpg", "webp"} else resized
 
     save_kwargs: dict[str, int | bool] = {}
     if target_format == "jpg":
@@ -61,11 +62,27 @@ def save_image_to_bytes(image: Image.Image, target_format: str, options: Process
     return buffer.getvalue()
 
 
+def _convert_image_to_pdf(content: bytes, options: ProcessingOptions) -> bytes:
+    with Image.open(BytesIO(content)) as img:
+        source_format = (img.format or "").upper()
+        if not options.resize_enabled and source_format in {"JPEG", "JPG", "PNG", "TIFF"}:
+            return img2pdf.convert(content)
+
+        processed = _apply_resize(img, options)
+        # img2pdf expects an image file payload; encode to PNG for broad compatibility.
+        buffer = BytesIO()
+        processed.save(buffer, format="PNG")
+    return img2pdf.convert(buffer.getvalue())
+
+
 def handle_image(name: str, content: bytes, target_format: str, options: ProcessingOptions) -> ProcessResult:
     base = safe_stem(name)
     try:
-        with Image.open(BytesIO(content)) as img:
-            output_content = save_image_to_bytes(img, target_format, options)
+        if target_format == "pdf":
+            output_content = _convert_image_to_pdf(content, options)
+        else:
+            with Image.open(BytesIO(content)) as img:
+                output_content = save_image_to_bytes(img, target_format, options)
         return ProcessResult(
             source_name=name,
             success=True,
@@ -101,24 +118,42 @@ def handle_pdf(name: str, content: bytes, target_format: str, options: Processin
             message="PDF to PDF conversion is not supported.",
         )
     try:
-        pages = convert_from_bytes(content, dpi=options.pdf_dpi)
-        if not pages:
+        with fitz.open(stream=content, filetype="pdf") as document:
+            if document.page_count == 0:
+                return ProcessResult(
+                    source_name=name,
+                    success=False,
+                    file_type="pdf",
+                    outputs=[],
+                    message="PDF has no readable pages.",
+                )
+
+            scale = max(0.1, options.pdf_dpi / 72.0)
+            matrix = fitz.Matrix(scale, scale)
+            outputs: list[ProcessedFile] = []
+            for index in range(document.page_count):
+                page = document[index]
+                pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+                image = Image.frombytes(
+                    "RGB",
+                    (pixmap.width, pixmap.height),
+                    pixmap.samples,
+                )
+                output_content = save_image_to_bytes(image, target_format, options)
+                outputs.append(
+                    ProcessedFile(
+                        filename=f"{base}_page_{index + 1}.{target_format}",
+                        content=output_content,
+                    )
+                )
+
+        if not outputs:
             return ProcessResult(
                 source_name=name,
                 success=False,
                 file_type="pdf",
                 outputs=[],
                 message="PDF has no readable pages.",
-            )
-
-        outputs: list[ProcessedFile] = []
-        for index, page in enumerate(pages, start=1):
-            output_content = save_image_to_bytes(page, target_format, options)
-            outputs.append(
-                ProcessedFile(
-                    filename=f"{base}_page_{index}.{target_format}",
-                    content=output_content,
-                )
             )
 
         return ProcessResult(

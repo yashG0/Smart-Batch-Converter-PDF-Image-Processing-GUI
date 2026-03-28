@@ -26,6 +26,13 @@ def _should_use_fast_path(payloads: list[tuple[str, bytes]]) -> bool:
     return total_bytes <= FAST_PATH_MAX_TOTAL_BYTES
 
 
+def _should_use_process_pool(payloads: list[tuple[str, bytes]], workers: int) -> bool:
+    if workers <= 1 or len(payloads) <= 1:
+        return False
+    # PDF rendering and large-image conversion are CPU-heavy; prefer processes here.
+    return any(name.lower().endswith(".pdf") for name, _ in payloads)
+
+
 def create_job(
     payloads: list[tuple[str, bytes]],
     target_format: str,
@@ -65,7 +72,7 @@ def create_job(
                 target_format=target_format,
                 options=options,
                 max_workers=min(2, normalized_workers),
-                use_processes=False,
+                use_processes=_should_use_process_pool(payloads, normalized_workers),
                 progress_callback=on_progress,
             )
             mark_job_done(job_id, results=results, target_format=target_format)

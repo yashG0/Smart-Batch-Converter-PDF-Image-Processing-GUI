@@ -39,7 +39,8 @@ Sample test files are included in `assets/examples/`:
 - Python
 - Streamlit
 - Pillow
-- pdf2image
+- PyMuPDF
+- img2pdf
 - uv
 
 ## Project Structure
@@ -76,13 +77,7 @@ Sample test files are included in `assets/examples/`:
 uv sync
 ```
 
-2. Install Poppler (required by `pdf2image`):
-
-```bash
-sudo pacman -S poppler
-```
-
-## Run App
+2. Run app:
 
 ```bash
 uv run streamlit run main.py
@@ -98,6 +93,14 @@ To see coverage report:
 
 ```bash
 uv run pytest --cov=services --cov=core --cov=ui --cov-report=term-missing
+```
+
+## Benchmark Speed
+
+Run a quick local performance benchmark:
+
+```bash
+uv run python benchmark.py
 ```
 
 ## Edge Cases Handled
